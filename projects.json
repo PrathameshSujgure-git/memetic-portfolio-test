@@ -1,0 +1,12 @@
+[
+  {
+    "name": "portfolio",
+    "repo": "PrathameshSujgure-git/porto-portfolio-next",
+    "channel": "ask-claude"
+  },
+  {
+    "name": "gasless",
+    "repo": "PrathameshSujgure-git/Gasless",
+    "channel": "gasless-internal"
+  }
+]

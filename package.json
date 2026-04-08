@@ -1,0 +1,21 @@
+{
+  "name": "the-memetic-agent",
+  "version": "3.0.0",
+  "description": "Slack-powered AI design engineer — direct API, no Claude Code dependency",
+  "type": "module",
+  "scripts": {
+    "start": "node listener.mjs",
+    "add-project": "node scripts/add-project.mjs",
+    "setup": "node scripts/setup.mjs",
+    "dashboard": "open dashboard/index.html || xdg-open dashboard/index.html"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@octokit/rest": "^21.0.0",
+    "@slack/socket-mode": "^2.0.0",
+    "@slack/web-api": "^7.0.0",
+    "@supermemory/tools": "^1.4.1",
+    "dotenv": "^16.4.0",
+    "puppeteer": "^23.0.0"
+  }
+}

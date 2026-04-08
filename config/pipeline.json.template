@@ -1,0 +1,52 @@
+{
+  "_comment": "Quality gates that run after code changes. Steps with 'prompt' use custom prompts. Steps with 'skill' reference config/skills.json. 'run_when' controls timing: always, visual-change, code-change, pre-merge, post-deploy.",
+  "steps": [
+    {
+      "name": "design-check",
+      "prompt": "Review the visual change. Does it follow the project's design system? Check typography, spacing, color usage against CODEBASE.md guidelines. Flag anything that looks off.",
+      "required": true,
+      "autofix": false
+    },
+    {
+      "name": "code-hygiene",
+      "prompt": "Check the changed code for: unused imports, console.logs left behind, hardcoded values that should be CSS variables or design tokens, inconsistent naming patterns. Fix anything you find.",
+      "required": true,
+      "autofix": true
+    },
+    {
+      "name": "bug-check",
+      "prompt": "Look at the change in context. Could it break anything? Check for: null references, missing fallbacks, responsive breakpoints that might be affected, theme variables missing for light/dark mode, edge cases with empty data.",
+      "required": true,
+      "autofix": true
+    },
+    {
+      "_comment": "REFERENCE ONLY: Skill-based steps below show all possible skill integrations. During setup, only steps matching your enabled packs are generated into pipeline.json. Do not copy this template directly — run npm run setup instead.",
+      "name": "design-audit",
+      "skill": "design-audit",
+      "required": true,
+      "autofix": false,
+      "run_when": "visual-change"
+    },
+    {
+      "name": "code-review",
+      "skill": "code-review",
+      "required": true,
+      "autofix": true,
+      "run_when": "code-change"
+    },
+    {
+      "name": "security-scan",
+      "skill": "security-scan",
+      "required": false,
+      "autofix": false,
+      "run_when": "pre-merge"
+    },
+    {
+      "name": "canary-monitor",
+      "skill": "canary-monitor",
+      "required": false,
+      "autofix": false,
+      "run_when": "post-deploy"
+    }
+  ]
+}

@@ -1,0 +1,709 @@
+{
+  "_comment": "Skill registry. Each skill maps a gstack capability to a Slack-friendly experience. Grouped into packs for easy setup.",
+  "_version": "1.0.0",
+  "_packs": {
+    "quality": {
+      "name": "Quality Pack",
+      "description": "Deep design, code, and QA analysis after every change",
+      "default": true,
+      "skills": ["design-audit", "code-review", "qa", "investigate"]
+    },
+    "security": {
+      "name": "Security Pack",
+      "description": "OWASP Top 10, threat modeling, and safety controls",
+      "default": false,
+      "skills": ["security-scan", "safety-guard"]
+    },
+    "shipping": {
+      "name": "Shipping Pack",
+      "description": "Ship readiness, deploy flow, post-deploy monitoring, release docs, and performance",
+      "default": false,
+      "skills": ["ship-check", "land-and-deploy", "canary-monitor", "release-docs", "benchmark", "setup-deploy"]
+    },
+    "planning": {
+      "name": "Planning Pack",
+      "description": "Product, engineering, and design reviews before writing code",
+      "default": false,
+      "skills": ["office-hours", "ceo-review", "eng-review", "design-pre-review", "design-consultation", "full-review"]
+    },
+    "creative": {
+      "name": "Creative Pack",
+      "description": "Design variants, HTML generation, and visual exploration",
+      "default": false,
+      "skills": ["design-variants", "design-to-code"]
+    },
+    "meta": {
+      "name": "Meta Pack",
+      "description": "Retrospectives, institutional memory, and cross-checking",
+      "default": false,
+      "skills": ["retro", "learn", "second-opinion"]
+    },
+    "browser": {
+      "name": "Browser Pack",
+      "description": "Advanced browser control — persistent sessions, cookies, headed Chrome for CAPTCHAs",
+      "default": false,
+      "skills": ["browse", "setup-cookies", "connect-browser"]
+    }
+  },
+  "tool_detection": {
+    "_comment": "On startup, the agent runs 'which <tool>' for each CLI tool below. If available, the skill upgrades to use real tooling. If not, falls back to prompt-only analysis. Both work — tools just give harder data.",
+    "tools": {
+      "lighthouse": {
+        "check": "which lighthouse",
+        "install": "npm i -g lighthouse",
+        "upgrades": ["benchmark"],
+        "what_it_adds": "Real Core Web Vitals scores (LCP, CLS, FID, TBT, SI) instead of estimates from Browser Tool observation"
+      },
+      "eslint": {
+        "check": "which eslint || npx eslint --version",
+        "install": "npm i -D eslint",
+        "upgrades": ["code-review"],
+        "what_it_adds": "Static analysis: catches unused vars, unreachable code, complexity warnings, and project-specific lint rules"
+      },
+      "tsc": {
+        "check": "which tsc || npx tsc --version",
+        "install": "npm i -D typescript",
+        "upgrades": ["code-review", "qa"],
+        "what_it_adds": "Type checking: catches type errors, missing properties, incorrect function signatures before runtime"
+      },
+      "npm_audit": {
+        "check": "npm audit --json 2>/dev/null | head -1",
+        "install": "(built into npm)",
+        "upgrades": ["security-scan"],
+        "what_it_adds": "Real CVE database lookup on all dependencies — catches known vulnerabilities that pattern matching misses"
+      },
+      "semgrep": {
+        "check": "which semgrep",
+        "install": "pip install semgrep",
+        "upgrades": ["security-scan"],
+        "what_it_adds": "SAST rules for injection, auth bypass, crypto misuse — thousands of community rules across languages"
+      },
+      "playwright": {
+        "check": "npx playwright --version 2>/dev/null",
+        "install": "npm i -D @playwright/test && npx playwright install",
+        "upgrades": ["qa", "browse"],
+        "what_it_adds": "Real browser automation: can run existing test suites, interact with complex UIs, test across Chrome/Firefox/Safari"
+      },
+      "axe": {
+        "check": "npx @axe-core/cli --version 2>/dev/null",
+        "install": "npm i -D @axe-core/cli",
+        "upgrades": ["design-audit"],
+        "what_it_adds": "Real accessibility audit: WCAG 2.1 AA/AAA compliance, contrast ratios, ARIA validation — not estimates"
+      }
+    }
+  },
+  "skills": {
+    "design-audit": {
+      "gstack_skill": "/design-review",
+      "enabled": true,
+      "trigger": "auto",
+      "trigger_on": ["visual-change"],
+      "display_name": "Design Audit",
+      "description_for_humans": "80-point visual quality check on typography, spacing, colors, accessibility and layout consistency",
+      "description_for_agent": "Run 80-item visual audit on changed pages. Read changed CSS/TSX/SVG files. Take screenshots of affected pages. Check: typography consistency (12 items), spacing system (10), color palette adherence (8), layout/grid (12), accessibility/contrast (15), design system consistency (10), responsiveness (13). Group findings by severity: critical (must fix), warning (should fix), info (nice to have). Report pass count. If critical issues found and autofix possible (spacing/typography), suggest fixes.",
+      "min_role": "editor",
+      "slack_emoji": "art",
+      "result_format": "checklist",
+      "estimated_duration": "20-40s",
+      "can_autofix": "partial",
+      "tooling": {
+        "optional_tools": ["axe"],
+        "with_tools": "Run axe-core on affected pages for real WCAG compliance data. Merge axe findings into the 80-point checklist under the Accessibility category. Hard numbers (contrast 3.2:1 vs required 4.5:1) replace LLM estimates.",
+        "without_tools": "LLM evaluates accessibility from screenshots and code. Catches most issues but may miss exact contrast ratios or ARIA violations."
+      }
+    },
+    "code-review": {
+      "gstack_skill": "/review",
+      "enabled": true,
+      "trigger": "auto",
+      "trigger_on": ["code-change"],
+      "display_name": "Code Review",
+      "description_for_humans": "Staff-engineer-level review catching performance issues, race conditions, and trust boundary violations",
+      "description_for_agent": "Act as a paranoid staff engineer. Review changed files for: N+1 query patterns, race conditions, unvalidated inputs crossing trust boundaries, missing error handling at system boundaries, memory leaks, hardcoded secrets, dead code paths. Fix obvious issues automatically (unused imports, console.logs, missing null checks). For complex issues, report with file:line and suggested fix. Completeness check: are all edge cases handled? Are there missing test cases?",
+      "min_role": "editor",
+      "slack_emoji": "mag_right",
+      "result_format": "report",
+      "estimated_duration": "15-30s",
+      "can_autofix": "partial",
+      "tooling": {
+        "optional_tools": ["eslint", "tsc"],
+        "with_tools": "Run eslint on changed files first — get concrete lint errors with file:line. Run tsc --noEmit on the project — get type errors. Feed these real findings into the LLM review for deeper analysis. Auto-fix eslint-fixable issues (eslint --fix).",
+        "without_tools": "LLM reads the diff and surrounding code. Catches structural issues (race conditions, N+1) well. May miss subtle type errors or project-specific lint rules."
+      }
+    },
+    "qa": {
+      "gstack_skill": "/qa",
+      "enabled": true,
+      "trigger": "suggested",
+      "trigger_on": ["pre-merge"],
+      "display_name": "QA Check",
+      "description_for_humans": "Automated testing in 4 modes: quick (changed files only), full (entire app), diff-aware (only what changed since last QA), regression (re-test previously broken areas)",
+      "description_for_agent": "Run QA based on context. Modes: 'quick' = only validate changed files compile and render correctly. 'full' = check all routes, forms, and interactions. 'diff-aware' = only test areas affected by the diff. 'regression' = re-test areas that had bugs before (check .slack-context/_skills/ for previous failures). Default to 'quick' for normal changes, 'full' before merge. Use Browser Tool to visit affected pages, check for console errors, verify interactions work. Report: pages tested, errors found, screenshots of failures.",
+      "min_role": "editor",
+      "slack_emoji": "white_check_mark",
+      "result_format": "checklist",
+      "estimated_duration": "30-90s",
+      "can_autofix": false,
+      "tooling": {
+        "optional_tools": ["tsc", "playwright"],
+        "with_tools": "Run tsc --noEmit to catch type errors. If playwright tests exist (*.spec.ts, *.test.ts with @playwright/test import), run them with npx playwright test. Report real test results alongside Browser Tool page checks.",
+        "without_tools": "Uses Browser Tool to visit pages, check console errors, verify renders. No actual test suite execution — visual and navigation testing only."
+      }
+    },
+    "security-scan": {
+      "gstack_skill": "/cso",
+      "enabled": false,
+      "trigger": "suggested",
+      "trigger_on": ["pre-merge"],
+      "display_name": "Security Scan",
+      "description_for_humans": "OWASP Top 10 vulnerability scan plus STRIDE threat modeling on changed code",
+      "description_for_agent": "Run OWASP Top 10 analysis on changed files. Check for: injection (SQL, XSS, command), broken auth, sensitive data exposure, XML external entities, broken access control, security misconfiguration, insecure deserialization, known vulnerable dependencies, insufficient logging. Then run STRIDE threat model: Spoofing, Tampering, Repudiation, Information Disclosure, Denial of Service, Elevation of Privilege. Report each finding with severity (critical/high/medium/low), affected file:line, and remediation steps.",
+      "min_role": "editor",
+      "slack_emoji": "shield",
+      "result_format": "report",
+      "estimated_duration": "20-40s",
+      "can_autofix": false,
+      "tooling": {
+        "optional_tools": ["npm_audit", "semgrep"],
+        "with_tools": "Run npm audit --json for real CVE lookups on all dependencies. Run semgrep --config=auto on changed files for SAST pattern matching (thousands of community rules). Merge real findings with LLM's OWASP/STRIDE analysis for comprehensive coverage.",
+        "without_tools": "LLM reads code and identifies vulnerability patterns. Catches common OWASP issues but can't check CVE databases or run static analysis rules. Recommend dedicated SAST tools for production apps with user data."
+      }
+    },
+    "canary-monitor": {
+      "gstack_skill": "/canary",
+      "enabled": false,
+      "trigger": "auto",
+      "trigger_on": ["post-deploy"],
+      "display_name": "Canary Monitor",
+      "description_for_humans": "Post-deploy health check: visits production pages, checks for errors, verifies key functionality works",
+      "description_for_agent": "After production deploy, wait 60s for propagation. Then visit each major route on the production URL using Browser Tool. For each page: check HTTP status (expect 200), check for console errors, check for visual regressions (compare with pre-deploy screenshots if available), check key interactions (buttons clickable, forms visible, images loaded). If any check fails, immediately alert in the Slack thread AND channel. Report: pages checked, status per page, any anomalies.",
+      "min_role": "viewer",
+      "slack_emoji": "bird",
+      "result_format": "checklist",
+      "estimated_duration": "60-120s",
+      "can_autofix": false
+    },
+    "release-docs": {
+      "gstack_skill": "/document-release",
+      "enabled": false,
+      "trigger": "suggested",
+      "trigger_on": ["post-deploy"],
+      "display_name": "Release Notes",
+      "description_for_humans": "Auto-generates release notes from all changes in the merge",
+      "description_for_agent": "After a successful merge, read all .slack-context/ files for threads included in this merge. Compile: list of all changes made, files modified, decisions taken, screenshots of final state. Generate a release summary suitable for posting to a changelog or Slack channel. Format: version/date header, bullet list of changes grouped by type (features, fixes, improvements), contributor credits. Post to thread and optionally to channel.",
+      "min_role": "viewer",
+      "slack_emoji": "memo",
+      "result_format": "summary",
+      "estimated_duration": "10-20s",
+      "can_autofix": false
+    },
+    "benchmark": {
+      "gstack_skill": "/benchmark",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Performance Check",
+      "description_for_humans": "Measures Core Web Vitals, load times, and resource sizes with before/after comparison",
+      "description_for_agent": "Use Browser Tool to measure page performance. For each affected route: measure load time, check resource sizes (JS bundle, CSS, images), estimate Core Web Vitals (LCP, FID, CLS) by observing load behavior. If a pre-change measurement exists in .slack-context/_skills/, show before/after comparison. Flag any regression >10%. Report: route, load time, largest resources, estimated CWV scores, recommendations.",
+      "min_role": "editor",
+      "slack_emoji": "stopwatch",
+      "result_format": "comparison",
+      "estimated_duration": "30-60s",
+      "can_autofix": false,
+      "tooling": {
+        "optional_tools": ["lighthouse"],
+        "with_tools": "Run lighthouse [URL] --output=json --chrome-flags='--headless' for each route. Get real scores: Performance (0-100), LCP, FID, CLS, TBT, Speed Index, plus detailed resource breakdown and optimization opportunities. Compare before/after with real numbers.",
+        "without_tools": "LLM observes page load via Browser Tool. Estimates load time, notes large resources, checks for layout shift. Directional feedback, not precise CWV scores."
+      }
+    },
+    "office-hours": {
+      "gstack_skill": "/office-hours",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Product Review",
+      "description_for_humans": "YC-style product review: challenges assumptions, checks market fit, helps refine the idea before building",
+      "description_for_agent": "Act as a YC partner doing office hours. Ask six forcing questions: 1) Who is the user and what problem are you solving? 2) How do they solve it today? 3) What is your unique insight? 4) What is the simplest version you can ship? 5) How will you know it works? 6) What is the biggest risk? Adapt based on context: if in a thread about a feature request, focus on that feature. If in a new thread, do a full product review. Be direct, challenge assumptions, suggest concrete next steps.",
+      "min_role": "editor",
+      "slack_emoji": "bulb",
+      "result_format": "summary",
+      "estimated_duration": "interactive",
+      "can_autofix": false
+    },
+    "design-consultation": {
+      "gstack_skill": "/design-consultation",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Design Direction",
+      "description_for_humans": "Strategic design consultation: landscape research, creative risks, generates a design system direction document",
+      "description_for_agent": "Act as a senior design director. Analyze the current project's visual direction by reading CODEBASE.md design guidelines and taking screenshots of key pages. Research: what do similar products look like? What are current design trends in this space? Identify creative risks worth taking and safe defaults. Generate recommendations for: typography, color, spacing, component patterns, motion. Output a short design direction document that can be committed as DESIGN.md.",
+      "min_role": "editor",
+      "slack_emoji": "paintbrush",
+      "result_format": "report",
+      "estimated_duration": "interactive",
+      "can_autofix": false
+    },
+    "ceo-review": {
+      "gstack_skill": "/plan-ceo-review",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "CEO Review",
+      "description_for_humans": "Brian Chesky-style product review: finds the 10-star experience, challenges scope, asks what would make users love this",
+      "description_for_agent": "Act as a product-obsessed CEO reviewing a plan or feature before build. Four modes based on context: Scope Expansion (what would make this 10x better?), Selective Expansion (which parts deserve more investment?), Hold Scope (is the current scope right?), Scope Reduction (what can we cut without losing the magic?). For each: identify the core insight, challenge assumptions about what users actually need, find the 10-star version, then work backwards to what's shippable. Be direct, opinionated, specific.",
+      "min_role": "editor",
+      "slack_emoji": "crown",
+      "result_format": "summary",
+      "estimated_duration": "interactive",
+      "can_autofix": false
+    },
+    "eng-review": {
+      "gstack_skill": "/plan-eng-review",
+      "enabled": false,
+      "trigger": "suggested",
+      "trigger_on": [],
+      "display_name": "Eng Review",
+      "description_for_humans": "Engineering manager review: architecture, data flow diagrams, test strategy, and technical risk assessment",
+      "description_for_agent": "Act as a senior engineering manager reviewing a plan or implementation. Generate: 1) Architecture diagram (describe component relationships, data flow, API boundaries). 2) Risk assessment (what could go wrong technically — scaling, data integrity, migration). 3) Test matrix (what needs unit tests, integration tests, E2E tests). 4) Review readiness dashboard: is this ready for code review? What's missing? Rate: architecture clarity, test coverage plan, error handling, performance considerations. Be specific about file paths and functions.",
+      "min_role": "editor",
+      "slack_emoji": "gear",
+      "result_format": "report",
+      "estimated_duration": "20-40s",
+      "can_autofix": false
+    },
+    "design-pre-review": {
+      "gstack_skill": "/plan-design-review",
+      "enabled": false,
+      "trigger": "suggested",
+      "trigger_on": [],
+      "display_name": "Design Pre-Review",
+      "description_for_humans": "Senior designer reviewing the plan before any code is written: 7 passes covering UX flow, visual hierarchy, accessibility, edge cases",
+      "description_for_agent": "Act as a senior designer reviewing a plan BEFORE code is written. Run 7 passes: 1) User flow — is the happy path clear? What about errors, empty states, loading? 2) Visual hierarchy — will the user see what matters first? 3) Information architecture — is content organized logically? 4) Accessibility — can this work for screen readers, keyboard nav, color blind users? 5) Edge cases — what happens with long text, no data, slow connection, mobile? 6) Consistency — does this match existing patterns in the project? 7) AI Slop detection — flag anything that looks generic, templated, or lacking personality. Rate 0-10 per dimension. Be specific about what to fix before coding starts.",
+      "min_role": "editor",
+      "slack_emoji": "pencil2",
+      "result_format": "checklist",
+      "estimated_duration": "20-30s",
+      "can_autofix": false
+    },
+    "design-variants": {
+      "gstack_skill": "/design-shotgun",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Design Variants",
+      "description_for_humans": "Generates 3 distinct design approaches for comparison: safe, bold, and experimental",
+      "description_for_agent": "Generate 3 distinct visual approaches for the requested component or page. Variant A: Safe — follows existing patterns, minimal risk, polished. Variant B: Bold — pushes the design system, stronger visual statement, intentional. Variant C: Experimental — breaks conventions, tries something unexpected, high risk/high reward. For each: describe the visual direction, key differences, and why someone would pick it. If possible, generate HTML/CSS previews or describe the visual in enough detail to screenshot. Ask the user which direction resonates, then execute that one.",
+      "min_role": "editor",
+      "slack_emoji": "palette",
+      "result_format": "comparison",
+      "estimated_duration": "30-60s",
+      "can_autofix": false
+    },
+    "design-to-code": {
+      "gstack_skill": "/design-html",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Design to Code",
+      "description_for_humans": "Generates production HTML/CSS from a design direction, description, or screenshot, matching the project's stack",
+      "description_for_agent": "Generate production-ready code from a design description, screenshot, or Figma reference. Detect the project's framework (React, Svelte, Vue, plain HTML) from CODEBASE.md. Generate code that: uses the project's existing component library, follows the project's naming conventions, uses the project's design tokens (colors, spacing, typography), includes responsive breakpoints, handles loading/empty/error states. Output the exact files to create or modify. Run a refinement loop: generate → screenshot → compare with intent → adjust.",
+      "min_role": "editor",
+      "slack_emoji": "computer",
+      "result_format": "report",
+      "estimated_duration": "30-60s",
+      "can_autofix": false
+    },
+    "investigate": {
+      "gstack_skill": "/investigate",
+      "enabled": true,
+      "trigger": "suggested",
+      "trigger_on": [],
+      "display_name": "Root Cause",
+      "description_for_humans": "Investigates bugs by finding the actual root cause before suggesting any fix — stops after 3 failed attempts and escalates",
+      "description_for_agent": "Iron Law: no fixes without root cause. When a bug is reported or an error occurs: 1) Reproduce — understand exactly what happens and when. 2) Narrow — bisect the problem. Which file? Which function? Which line? 3) Root cause — why does this happen? Not 'what' but 'why'. Trace the data flow. Read the actual code. 4) Only after root cause is confirmed: propose a fix. If 3 investigation attempts fail to find root cause, STOP and escalate to the user with what you know and what you've ruled out. Never guess-fix.",
+      "min_role": "editor",
+      "slack_emoji": "detective",
+      "result_format": "report",
+      "estimated_duration": "30-120s",
+      "can_autofix": "after-root-cause"
+    },
+    "ship-check": {
+      "gstack_skill": "/ship",
+      "enabled": false,
+      "trigger": "suggested",
+      "trigger_on": ["pre-merge"],
+      "display_name": "Ship Check",
+      "description_for_humans": "Release engineer checklist: test coverage, review gate, PR quality, changelog readiness",
+      "description_for_agent": "Act as a release engineer. Before shipping: 1) Test bootstrap — are there tests? Do they pass? What's the coverage on changed files? 2) Coverage audit — are critical paths tested? Flag untested functions in changed files. 3) Review gate — has this been reviewed? Are there unresolved comments? 4) PR quality — is the PR title clear? Does the description explain the change? Are screenshots included for visual changes? 5) Changelog — is this change documented? Should it be? Generate a PR description if one doesn't exist.",
+      "min_role": "editor",
+      "slack_emoji": "rocket",
+      "result_format": "checklist",
+      "estimated_duration": "15-30s",
+      "can_autofix": "partial"
+    },
+    "full-review": {
+      "gstack_skill": "/autoplan",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Full Review",
+      "description_for_humans": "Runs CEO + Design + Eng review in one pass — comprehensive plan review before building",
+      "description_for_agent": "Run three reviews sequentially on the current plan or feature request: 1) CEO Review — is this the right thing to build? Find the 10-star version. Challenge scope. 2) Design Pre-Review — 7-pass design review on the approach. Rate each dimension 0-10. 3) Eng Review — architecture, risks, test strategy. Generate review readiness dashboard. Synthesize all three into a unified recommendation: what to change before building, what's strong, what's risky. Six encoded principles: user value over technical elegance, ship fast then iterate, simplicity wins, data beats opinions, design is how it works not how it looks, good enough today beats perfect next month.",
+      "min_role": "editor",
+      "slack_emoji": "clipboard",
+      "result_format": "report",
+      "estimated_duration": "60-120s",
+      "can_autofix": false
+    },
+    "retro": {
+      "gstack_skill": "/retro",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Weekly Retro",
+      "description_for_humans": "Team retrospective: per-person contribution breakdown, shipping streaks, test health, what went well and what to improve",
+      "description_for_agent": "Generate a weekly retrospective by reading all .slack-context/ files and git history from the past 7 days. Include: 1) Per-person breakdown — who shipped what, how many changes, which areas of the codebase. 2) Shipping streak — consecutive days with production deploys. 3) Test health — are pipeline checks passing more or less often? 4) What went well — changes that shipped cleanly with no iterations. 5) What was hard — changes that took 3+ iterations or had pipeline failures. 6) Patterns — are we seeing the same types of bugs? Same files being changed repeatedly? 7) Suggestions — based on patterns, what should we do differently next week?",
+      "min_role": "viewer",
+      "slack_emoji": "mirror",
+      "result_format": "report",
+      "estimated_duration": "20-40s",
+      "can_autofix": false
+    },
+    "learn": {
+      "gstack_skill": "/learn",
+      "enabled": false,
+      "trigger": "auto",
+      "trigger_on": [],
+      "display_name": "Learn",
+      "description_for_humans": "Saves institutional knowledge from conversations — learnings compound across sessions so the agent gets smarter over time",
+      "description_for_agent": "After every thread that results in a commit, extract learnings. What did you discover about: the codebase (patterns, gotchas, conventions), the user's preferences (style, tone, what they care about), the project (design system, content rules, technical constraints)? Save learnings to .slack-context/_learnings.md on the staging branch. On startup, read this file to inform your decisions. Format: one learning per line, dated, tagged by category (codebase/preference/project). Learnings compound — if the same thing comes up twice, strengthen the signal. If a learning is contradicted, update it.",
+      "min_role": "viewer",
+      "slack_emoji": "brain",
+      "result_format": "summary",
+      "estimated_duration": "5-10s",
+      "can_autofix": false
+    },
+    "safety-guard": {
+      "gstack_skill": "/careful+/freeze+/guard",
+      "enabled": false,
+      "trigger": "auto",
+      "trigger_on": [],
+      "display_name": "Safety Guard",
+      "description_for_humans": "Protects critical files and patterns from accidental changes — warns before touching protected code",
+      "description_for_agent": "Before committing ANY change, check if the diff touches protected patterns: 1) Files in the 'cannotModify' guardrails list. 2) Database migrations or schema changes. 3) Authentication/authorization logic. 4) Payment processing code. 5) Environment configuration. 6) CI/CD pipeline files. If protected code is touched: STOP. Post a warning in the thread explaining what's being changed and why it's protected. Ask for explicit confirmation before proceeding. If the user confirms, proceed but add a [PROTECTED] tag to the commit message. Never silently modify protected code.",
+      "min_role": "viewer",
+      "slack_emoji": "lock",
+      "result_format": "summary",
+      "estimated_duration": "2-5s",
+      "can_autofix": false
+    },
+    "browse": {
+      "gstack_skill": "/browse",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Browse",
+      "description_for_humans": "Persistent headless browser session — navigate pages, fill forms, click buttons, extract data, take screenshots on demand",
+      "description_for_agent": "Launch a persistent headless browser session via Browser Tool. Supports: navigation (goto URL, back, forward, reload), reading (get page text, accessibility tree, forms, links, HTML), interaction (click, fill, hover, type, scroll, select, upload), inspection (cookies, console logs, network requests, CSS values, localStorage), visual (screenshot, PDF, responsive testing across viewports). Keep the session alive across multiple user requests in the same thread. Useful for: testing user flows, extracting content from live pages, filling out forms, checking interactive behavior, comparing staging vs production. Report findings with inline screenshots.",
+      "min_role": "editor",
+      "slack_emoji": "globe_with_meridians",
+      "result_format": "report",
+      "estimated_duration": "10-60s",
+      "can_autofix": false
+    },
+    "setup-cookies": {
+      "gstack_skill": "/setup-browser-cookies",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Browser Cookies",
+      "description_for_humans": "Import browser cookies for authenticated testing — lets the agent browse pages that require login",
+      "description_for_agent": "Import cookies from a user-provided cookie export or from a login flow. Steps: 1) Ask the user for cookies (they can export from Chrome DevTools > Application > Cookies, or use a browser extension). 2) Load cookies into the Browser Tool session. 3) Verify authentication by visiting a protected page and confirming access. 4) Store cookie config in .slack-context/_browser-cookies.json (encrypted/redacted — never store raw session tokens in git). This enables QA, Canary Monitor, and Browse skills to test authenticated pages and admin panels.",
+      "min_role": "owner",
+      "slack_emoji": "cookie",
+      "result_format": "summary",
+      "estimated_duration": "interactive",
+      "can_autofix": false
+    },
+    "connect-browser": {
+      "gstack_skill": "/connect-chrome",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Connect Browser",
+      "description_for_humans": "Connect to a headed Chrome instance for CAPTCHAs, complex logins, or visual debugging that headless can't handle",
+      "description_for_agent": "When headless browser is insufficient (CAPTCHAs, complex OAuth flows, visual debugging), guide the user to connect a headed Chrome instance. Steps: 1) Instruct user to open Chrome with remote debugging: chrome --remote-debugging-port=9222. 2) Connect Browser Tool to the running instance. 3) The user handles CAPTCHAs or logins manually in the visible browser. 4) Once authenticated, the agent takes over for automated testing. 5) Hand back to headless when done. Post clear instructions in Slack with exact commands to run.",
+      "min_role": "owner",
+      "slack_emoji": "desktop_computer",
+      "result_format": "summary",
+      "estimated_duration": "interactive",
+      "can_autofix": false
+    },
+    "setup-deploy": {
+      "gstack_skill": "/setup-deploy",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Setup Deploy",
+      "description_for_humans": "One-time deploy platform detection and configuration — identifies Vercel, Netlify, Railway, or custom deploy setup",
+      "description_for_agent": "Detect and configure the project's deploy platform. Steps: 1) Check for platform indicators: vercel.json/vercel.ts (Vercel), netlify.toml (Netlify), railway.json (Railway), Dockerfile (Docker), .github/workflows (GitHub Actions). 2) Check for package.json scripts: build, deploy, start. 3) Identify the deploy flow: push-to-deploy (Vercel/Netlify), CI/CD (GitHub Actions), manual (scripts). 4) Detect preview/staging URL patterns (Vercel branch deploys, Netlify deploy previews). 5) Save deploy config to config/project.json. 6) Report: platform detected, deploy flow, staging URL pattern, estimated deploy time. This helps Canary Monitor and screenshot timing work correctly.",
+      "min_role": "owner",
+      "slack_emoji": "satellite",
+      "result_format": "report",
+      "estimated_duration": "10-20s",
+      "can_autofix": false
+    },
+    "second-opinion": {
+      "gstack_skill": "/codex",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": [],
+      "display_name": "Second Opinion",
+      "description_for_humans": "Cross-checks the current approach by re-analyzing the problem from scratch — catches blind spots and groupthink",
+      "description_for_agent": "Provide a second opinion on the current thread's work. Three modes: 1) Review mode — re-read all changes made in this thread from scratch. Forget previous context. Would you have made the same changes? What would you do differently? 2) Challenge mode — actively try to break the implementation. Find edge cases, race conditions, or UX issues the original approach missed. 3) Consult mode — the user describes a dilemma. Present pros/cons of each approach without anchoring on what was already done. Be genuinely independent. Don't rubber-stamp. If the approach is good, say so briefly. If there are real concerns, be specific about what and why.",
+      "min_role": "editor",
+      "slack_emoji": "thinking_face",
+      "result_format": "report",
+      "estimated_duration": "20-40s",
+      "can_autofix": false
+    },
+    "land-and-deploy": {
+      "gstack_skill": "/land-and-deploy",
+      "enabled": false,
+      "trigger": "manual",
+      "trigger_on": ["pre-merge"],
+      "display_name": "Land & Deploy",
+      "description_for_humans": "Full merge-to-production flow: creates PR, waits for CI, merges, monitors deploy, verifies production health",
+      "description_for_agent": "End-to-end deploy flow, more thorough than basic !merge. Steps: 1) Create PR with full description (changes, screenshots, test results). 2) Wait for CI checks to pass (poll GitHub status checks). 3) If CI fails, report the failure and stop — do not merge broken code. 4) If CI passes, merge the PR. 5) Wait for deploy to complete (use deploy platform timing from config or default 90s). 6) Run Canary Monitor on production (if enabled). 7) If canary fails, immediately alert in channel with rollback suggestion. 8) If canary passes, post success to channel with production screenshots. This is the 'careful merge' option — use !merge for quick merges, this for important releases.",
+      "min_role": "owner",
+      "slack_emoji": "airplane",
+      "result_format": "checklist",
+      "estimated_duration": "120-300s",
+      "can_autofix": false
+    }
+  },
+  "skill_router": {
+    "_comment": "The agent auto-picks skills based on context signals. No user input needed. Each signal type maps to detection logic and which skills to run.",
+
+    "signals": {
+      "visual-change": {
+        "detect_by": "files",
+        "file_patterns": ["*.css", "*.scss", "*.svg", "*.png", "*.jpg", "*.jpeg", "*.webp", "*.gif"],
+        "content_patterns": ["className", "style=", "tailwind", "color:", "font-", "margin", "padding", "gap", "grid", "flex", "bg-", "text-", "border-", "rounded", "shadow"],
+        "skills": ["design-audit"],
+        "weight": "normal"
+      },
+      "logic-change": {
+        "detect_by": "files",
+        "file_patterns": ["*.ts", "*.tsx", "*.js", "*.jsx", "*.py", "*.go", "*.rs"],
+        "exclude_patterns": ["*.test.*", "*.spec.*", "*.stories.*"],
+        "content_patterns": ["function", "async", "await", "fetch", "query", "mutation", "api", "handler", "middleware"],
+        "skills": ["code-review"],
+        "weight": "normal"
+      },
+      "content-only-change": {
+        "detect_by": "files",
+        "file_patterns": ["*.json", "*.md", "*.mdx", "*.yaml", "*.yml", "*.txt"],
+        "skills": [],
+        "weight": "skip-unless-relevant",
+        "_comment": "Pure content edits need no skills — just ship it"
+      },
+      "api-or-auth-change": {
+        "detect_by": "content",
+        "content_patterns": ["password", "token", "secret", "auth", "login", "session", "cookie", "jwt", "oauth", "csrf", "cors", "helmet", "sanitize", "encrypt", "hash", "bcrypt", "api/", "route.ts", "middleware"],
+        "skills": ["security-scan", "code-review"],
+        "weight": "high",
+        "_comment": "Security-sensitive changes get escalated automatically"
+      },
+      "dependency-change": {
+        "detect_by": "files",
+        "file_patterns": ["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml", "requirements.txt", "go.mod", "Cargo.toml"],
+        "skills": ["security-scan"],
+        "weight": "high",
+        "_comment": "New dependencies = new attack surface"
+      },
+      "first-change-in-thread": {
+        "detect_by": "context",
+        "condition": "thread has 0 previous commits",
+        "skills": [],
+        "weight": "skip-unless-relevant",
+        "_comment": "First change: let the user see results before running deep analysis"
+      },
+      "third-plus-iteration": {
+        "detect_by": "context",
+        "condition": "thread has 3+ commits on same files",
+        "skills": ["design-audit"],
+        "weight": "normal",
+        "_comment": "Lots of iteration on same area = time for a quality check"
+      },
+      "pre-merge": {
+        "detect_by": "command",
+        "command": "!merge",
+        "skills": ["qa", "security-scan"],
+        "weight": "critical",
+        "_comment": "Gate before production. Always run enabled gate skills."
+      },
+      "post-deploy": {
+        "detect_by": "event",
+        "event": "merge-complete",
+        "skills": ["canary-monitor", "release-docs"],
+        "weight": "critical"
+      },
+      "large-diff": {
+        "detect_by": "diff_size",
+        "threshold": "10+ files or 200+ lines changed",
+        "skills": ["code-review", "qa"],
+        "weight": "high",
+        "_comment": "Big changes deserve deeper review"
+      },
+      "user-asks-question": {
+        "detect_by": "intent",
+        "patterns": ["what should we build", "is this a good idea", "what do you think about", "should we", "product direction", "roadmap"],
+        "skills": ["office-hours"],
+        "weight": "normal"
+      },
+      "user-asks-about-design": {
+        "detect_by": "intent",
+        "patterns": ["design system", "brand", "visual direction", "look and feel", "redesign", "design language"],
+        "skills": ["design-consultation"],
+        "weight": "normal"
+      },
+      "user-reports-bug": {
+        "detect_by": "intent",
+        "patterns": ["broken", "not working", "bug", "error", "crash", "fails", "undefined", "null", "white screen", "500", "404"],
+        "skills": ["investigate"],
+        "weight": "high",
+        "_comment": "Bug reports trigger root cause investigation, not guessing"
+      },
+      "user-asks-for-variants": {
+        "detect_by": "intent",
+        "patterns": ["options", "alternatives", "variants", "different approaches", "try a few", "explore", "what if"],
+        "skills": ["design-variants"],
+        "weight": "normal"
+      },
+      "user-wants-review-before-build": {
+        "detect_by": "intent",
+        "patterns": ["before we build", "before coding", "review the plan", "is this plan good", "review this approach", "sanity check"],
+        "skills": ["full-review"],
+        "weight": "normal"
+      },
+      "user-asks-retro": {
+        "detect_by": "intent",
+        "patterns": ["retro", "retrospective", "how did this week go", "what shipped", "weekly update", "progress report"],
+        "skills": ["retro"],
+        "weight": "normal"
+      },
+      "thread-has-commits": {
+        "detect_by": "context",
+        "condition": "thread has 1+ commits and conversation is wrapping up (user says !merge, or no new messages for 60s)",
+        "skills": ["learn"],
+        "weight": "normal",
+        "_comment": "Extract learnings from every productive thread"
+      },
+      "protected-file-touched": {
+        "detect_by": "content",
+        "content_patterns": ["cannotModify", "migration", "schema", "payment", ".env", "ci/cd", "pipeline", "deploy"],
+        "skills": ["safety-guard"],
+        "weight": "critical",
+        "_comment": "Agent should check before committing to protected areas"
+      }
+    },
+
+    "routing_philosophy": "The agent decides what to run based on the full context: what changed, what the user asked, how many iterations happened, what was already checked. No hard limits. Sometimes zero skills are right (simple content edit). Sometimes five are right (big refactor before merge). Use judgment, not rules."
+  },
+
+  "natural_language_map": {
+    "_comment": "Fallback for explicit !check commands. The skill router handles automatic selection.",
+    "design": ["design-audit"],
+    "look": ["design-audit"],
+    "layout": ["design-audit"],
+    "visual": ["design-audit"],
+    "colors": ["design-audit"],
+    "typography": ["design-audit"],
+    "spacing": ["design-audit"],
+    "accessible": ["design-audit"],
+    "security": ["security-scan"],
+    "secure": ["security-scan"],
+    "vulnerabilities": ["security-scan"],
+    "safe": ["security-scan"],
+    "performance": ["benchmark"],
+    "speed": ["benchmark"],
+    "fast": ["benchmark"],
+    "slow": ["benchmark"],
+    "loading": ["benchmark"],
+    "everything": "SPECIAL: run ALL enabled skills. Do not use this array — instead read config/skills.json and run every skill where enabled=true.",
+    "ready to ship": ["qa", "security-scan", "design-audit", "ship-check"],
+    "ready": ["qa", "design-audit", "ship-check"],
+    "test": ["qa"],
+    "qa": ["qa"],
+    "bugs": ["investigate"],
+    "broken": ["investigate"],
+    "debug": ["investigate"],
+    "why": ["investigate"],
+    "root cause": ["investigate"],
+    "review": ["code-review"],
+    "code": ["code-review"],
+    "architecture": ["eng-review"],
+    "engineering": ["eng-review"],
+    "data flow": ["eng-review"],
+    "product": ["office-hours"],
+    "strategy": ["office-hours"],
+    "idea": ["office-hours"],
+    "ceo": ["ceo-review"],
+    "10 star": ["ceo-review"],
+    "scope": ["ceo-review"],
+    "direction": ["design-consultation"],
+    "brand": ["design-consultation"],
+    "plan review": ["full-review"],
+    "full review": ["full-review"],
+    "before building": ["full-review"],
+    "variants": ["design-variants"],
+    "options": ["design-variants"],
+    "alternatives": ["design-variants"],
+    "explore designs": ["design-variants"],
+    "generate html": ["design-to-code"],
+    "build this design": ["design-to-code"],
+    "from figma": ["design-to-code"],
+    "retro": ["retro"],
+    "retrospective": ["retro"],
+    "this week": ["retro"],
+    "what shipped": ["retro"],
+    "ship": ["ship-check"],
+    "pr ready": ["ship-check"],
+    "release": ["ship-check", "release-docs"],
+    "changelog": ["release-docs"],
+    "what changed": ["release-docs"],
+    "learn": ["learn"],
+    "remember this": ["learn"],
+    "protect": ["safety-guard"],
+    "careful": ["safety-guard"],
+    "freeze": ["safety-guard"],
+    "design before code": ["design-pre-review"],
+    "ux review": ["design-pre-review"],
+    "before coding": ["design-pre-review"],
+    "browse": ["browse"],
+    "visit": ["browse"],
+    "open page": ["browse"],
+    "navigate": ["browse"],
+    "fill form": ["browse"],
+    "click": ["browse"],
+    "cookies": ["setup-cookies"],
+    "login": ["setup-cookies"],
+    "authenticated": ["setup-cookies"],
+    "captcha": ["connect-browser"],
+    "headed": ["connect-browser"],
+    "deploy setup": ["setup-deploy"],
+    "vercel": ["setup-deploy"],
+    "netlify": ["setup-deploy"],
+    "second opinion": ["second-opinion"],
+    "double check": ["second-opinion"],
+    "challenge": ["second-opinion"],
+    "am i wrong": ["second-opinion"],
+    "blind spots": ["second-opinion"],
+    "careful merge": ["land-and-deploy"],
+    "full deploy": ["land-and-deploy"],
+    "safe merge": ["land-and-deploy"],
+    "ci check": ["land-and-deploy"]
+  }
+}

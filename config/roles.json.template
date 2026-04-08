@@ -1,0 +1,15 @@
+{
+  "_comment": "Map Slack user IDs to roles. Get user IDs from Slack profile or via !whoami command.",
+  "permissions": {
+    "owner": ["!full-access", "!copy", "!and", "!merge", "!review", "!pipeline", "!role", "!check", "!skip", "!skills", "!status", "!whoami"],
+    "editor": ["!full-access", "!copy", "!and", "!review", "!check", "!skip", "!status", "!whoami"],
+    "contributor": ["!copy", "!and", "!skip", "!status", "!whoami"],
+    "viewer": ["!review", "!status", "!whoami"]
+  },
+  "users": {
+    "owners": [],
+    "editors": [],
+    "contributors": [],
+    "viewers": []
+  }
+}

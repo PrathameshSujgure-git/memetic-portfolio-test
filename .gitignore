@@ -1,0 +1,12 @@
+node_modules/
+.env
+.DS_Store
+config/project.json
+config/roles.json
+config/pipeline.json
+config/skills.json
+scripts/agent-system-generated.md
+state/
+repos/
+logs/
+projects/*/

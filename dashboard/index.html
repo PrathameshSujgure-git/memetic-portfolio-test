@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memetic Agent — Dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'SF Mono', 'Fira Code', monospace; background: #0a0a0a; color: #e0e0e0; padding: 24px; }
+  h1 { font-size: 14px; text-transform: uppercase; letter-spacing: 2px; color: #666; margin-bottom: 24px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+  .card { background: #111; border: 1px solid #222; padding: 20px; }
+  .card-title { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+  .card-subtitle { font-size: 11px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+  .stat-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #1a1a1a; }
+  .stat-label { color: #888; font-size: 12px; }
+  .stat-value { color: #fff; font-size: 12px; font-weight: 500; }
+  .stat-value.green { color: #27c93f; }
+  .stat-value.yellow { color: #ffbd2e; }
+  .stat-value.red { color: #ff5f56; }
+  .thread { padding: 12px 0; border-bottom: 1px solid #1a1a1a; }
+  .thread-title { font-size: 13px; color: #fff; margin-bottom: 4px; }
+  .thread-meta { font-size: 11px; color: #666; }
+  .badge { display: inline-block; font-size: 10px; padding: 2px 6px; text-transform: uppercase; letter-spacing: 0.5px; margin-left: 8px; }
+  .badge.active { background: #1a3a1a; color: #27c93f; }
+  .badge.idle { background: #2a2a1a; color: #ffbd2e; }
+  .badge.error { background: #3a1a1a; color: #ff5f56; }
+  .timeline { margin-top: 16px; }
+  .timeline-item { display: flex; gap: 12px; padding: 8px 0; border-bottom: 1px solid #1a1a1a; font-size: 12px; }
+  .timeline-time { color: #666; white-space: nowrap; min-width: 60px; }
+  .timeline-msg { color: #ccc; }
+  .section-title { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #555; margin: 16px 0 8px; }
+  .refresh { position: fixed; top: 16px; right: 24px; font-size: 11px; color: #444; }
+  .pipeline-step { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+  .pipeline-dot { width: 8px; height: 8px; border-radius: 50%; }
+  .pipeline-dot.pass { background: #27c93f; }
+  .pipeline-dot.fail { background: #ff5f56; }
+  .pipeline-dot.skip { background: #333; }
+  .empty { color: #333; font-size: 12px; padding: 16px 0; text-align: center; }
+  #status { font-size: 11px; color: #333; margin-bottom: 16px; }
+  .skill-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; }
+  .skill-icon { font-size: 14px; }
+  .skill-name { color: #ccc; }
+  .skill-meta { color: #444; font-size: 10px; }
+  .skill-findings { font-size: 10px; margin-left: auto; }
+  .skill-findings.clean { color: #27c93f; }
+  .skill-findings.warn { color: #ffbd2e; }
+  .skill-findings.crit { color: #ff5f56; }
+</style>
+</head>
+<body>
+
+<h1>The Memetic Agent — Dashboard</h1>
+<div id="status">Loading...</div>
+<div class="refresh" id="refresh-timer">Auto-refresh: 60s</div>
+
+<div class="grid" id="dashboard"></div>
+
+<script>
+const GITHUB_TOKEN = localStorage.getItem('github_token') || '';
+const PROJECTS_KEY = 'memetic_agent_projects';
+
+// Load projects from localStorage or prompt
+function getProjects() {
+  const stored = localStorage.getItem(PROJECTS_KEY);
+  if (stored) return JSON.parse(stored);
+  return [];
+}
+
+function addProject() {
+  const owner = prompt('GitHub owner:');
+  const repo = prompt('GitHub repo:');
+  const branch = prompt('Staging branch:', 'agent-changes');
+  if (!owner || !repo) return;
+  const projects = getProjects();
+  projects.push({ owner, repo, branch });
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  loadDashboard();
+}
+
+function removeProject(index) {
+  const projects = getProjects();
+  const removed = projects.splice(index, 1);
+  localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+  loadDashboard();
+}
+
+// GitHub API helper
+async function ghFetch(owner, repo, path, branch = 'main') {
+  const headers = { Accept: 'application/vnd.github.v3+json' };
+  if (GITHUB_TOKEN) headers.Authorization = `token ${GITHUB_TOKEN}`;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path}?ref=${branch}`, { headers });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (Array.isArray(data)) return data;
+    return atob(data.content.replace(/\n/g, ''));
+  } catch { return null; }
+}
+
+async function ghCommits(owner, repo, branch, limit = 10) {
+  const headers = { Accept: 'application/vnd.github.v3+json' };
+  if (GITHUB_TOKEN) headers.Authorization = `token ${GITHUB_TOKEN}`;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${branch}&per_page=${limit}`, { headers });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch { return []; }
+}
+
+function parseContextFile(content) {
+  const lines = content.split('\n');
+  const ctx = { user: '', started: '', changes: [], decisions: [], files: [], state: '' };
+  let section = '';
+  for (const line of lines) {
+    if (line.startsWith('User:')) ctx.user = line.replace('User:', '').trim();
+    if (line.startsWith('Started:')) ctx.started = line.replace('Started:', '').trim();
+    if (line.startsWith('## Changes')) section = 'changes';
+    else if (line.startsWith('## Decisions')) section = 'decisions';
+    else if (line.startsWith('## Current')) section = 'state';
+    else if (line.startsWith('## Files')) section = 'files';
+    else if (line.startsWith('## ')) section = '';
+    else if (section === 'changes' && line.match(/^\d+\./)) ctx.changes.push(line.replace(/^\d+\.\s*/, ''));
+    else if (section === 'decisions' && line.startsWith('- ') && !line.includes('(none')) ctx.decisions.push(line.replace('- ', ''));
+    else if (section === 'state' && line.startsWith('- ')) ctx.state = line.replace('- ', '');
+    else if (section === 'files' && line.startsWith('- ')) ctx.files.push(line.replace('- ', ''));
+  }
+  return ctx;
+}
+
+async function loadProjectData(project) {
+  const { owner, repo, branch } = project;
+
+  // Read context files
+  const contextDir = await ghFetch(owner, repo, '.slack-context', branch);
+  const threads = [];
+  if (Array.isArray(contextDir)) {
+    for (const file of contextDir.slice(0, 10)) {
+      if (!file.name.endsWith('.md')) continue;
+      const content = await ghFetch(owner, repo, `.slack-context/${file.name}`, branch);
+      if (content) threads.push({ name: file.name, ...parseContextFile(content) });
+    }
+  }
+
+  // Read recent commits
+  const commits = await ghCommits(owner, repo, branch, 10);
+  const slackCommits = commits.filter(c => c.commit?.message?.startsWith('[slack]'));
+
+  // Read pipeline config
+  const pipelineRaw = await ghFetch(owner, repo, 'config/pipeline.json', branch) || await ghFetch(owner, repo, 'config/pipeline.json', 'main');
+  let pipeline = null;
+  try { pipeline = JSON.parse(pipelineRaw); } catch {}
+
+  // Read skill results
+  const skillResults = [];
+  const skillsDir = await ghFetch(owner, repo, '.slack-context/_skills', branch);
+  if (Array.isArray(skillsDir)) {
+    // Get latest 10 skill results sorted by name (which includes timestamp)
+    const jsonFiles = skillsDir.filter(f => f.name.endsWith('.json')).slice(-10);
+    for (const file of jsonFiles) {
+      const content = await ghFetch(owner, repo, `.slack-context/_skills/${file.name}`, branch);
+      if (content) try { skillResults.push(JSON.parse(content)); } catch {}
+    }
+  }
+
+  // Read skills config
+  const skillsConfigRaw = await ghFetch(owner, repo, 'config/skills.json', branch) || await ghFetch(owner, repo, 'config/skills.json', 'main');
+  let skillsConfig = null;
+  try { skillsConfig = JSON.parse(skillsConfigRaw); } catch {}
+
+  return { owner, repo, branch, threads, commits: slackCommits, pipeline, skillResults, skillsConfig };
+}
+
+function renderProject(data, index) {
+  const { owner, repo, threads, commits, pipeline, skillResults, skillsConfig } = data;
+
+  let html = `
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:start">
+        <div>
+          <div class="card-title">${repo}</div>
+          <div class="card-subtitle">${owner}/${repo}</div>
+        </div>
+        <button onclick="removeProject(${index})" style="background:none;border:none;color:#333;cursor:pointer;font-size:16px" title="Remove project">×</button>
+      </div>
+
+      <div class="stat-row">
+        <span class="stat-label">Active threads</span>
+        <span class="stat-value">${threads.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Bot commits</span>
+        <span class="stat-value">${commits.length}</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Files modified</span>
+        <span class="stat-value">${[...new Set(threads.flatMap(t => t.files))].length}</span>
+      </div>
+  `;
+
+  // Threads
+  if (threads.length) {
+    html += '<div class="section-title">Threads</div>';
+    for (const t of threads) {
+      const status = t.changes.length > 0 ? 'active' : 'idle';
+      html += `
+        <div class="thread">
+          <div class="thread-title">${t.user || 'Unknown'} <span class="badge ${status}">${status}</span></div>
+          <div class="thread-meta">${t.changes.length} change(s) — ${t.state || 'No status'}</div>
+          ${t.decisions.length ? `<div class="thread-meta" style="color:#555;margin-top:4px">Decisions: ${t.decisions.slice(0, 2).join('; ')}</div>` : ''}
+        </div>`;
+    }
+  } else {
+    html += '<div class="empty">No active threads</div>';
+  }
+
+  // Pipeline
+  if (pipeline?.steps) {
+    html += '<div class="section-title">Pipeline</div>';
+    for (const step of pipeline.steps) {
+      const dotClass = step.required ? 'pass' : 'skip';
+      html += `
+        <div class="pipeline-step">
+          <div class="pipeline-dot ${dotClass}"></div>
+          <span style="color:#ccc">${step.name}</span>
+          <span style="color:#444;font-size:10px">${step.autofix ? 'autofix' : 'manual'} · ${step.required ? 'required' : 'optional'}</span>
+        </div>`;
+    }
+  }
+
+  // Skills
+  if (skillsConfig?.skills) {
+    const enabledSkills = Object.entries(skillsConfig.skills).filter(([, s]) => s.enabled);
+    if (enabledSkills.length) {
+      html += `<div class="section-title">Skills (${enabledSkills.length} enabled)</div>`;
+      for (const [id, skill] of enabledSkills) {
+        // Find latest result for this skill
+        const latestResult = skillResults.filter(r => r.skill === id).pop();
+        let findingsHtml = '<span class="skill-meta">not run yet</span>';
+        if (latestResult?.findings) {
+          const f = latestResult.findings;
+          if (f.critical > 0) findingsHtml = `<span class="skill-findings crit">${f.critical} critical, ${f.warning || 0} warn</span>`;
+          else if (f.warning > 0) findingsHtml = `<span class="skill-findings warn">${f.warning} warnings</span>`;
+          else findingsHtml = `<span class="skill-findings clean">${f.passed || '✓'} passed</span>`;
+        }
+        const triggerLabel = skill.trigger === 'auto' ? 'auto' : skill.trigger === 'suggested' ? 'suggested' : 'manual';
+        html += `
+          <div class="skill-row">
+            <span class="skill-name">${skill.display_name}</span>
+            <span class="skill-meta">${triggerLabel}</span>
+            ${findingsHtml}
+          </div>`;
+      }
+    }
+  }
+
+  // Recent activity (interleave commits and skill runs, sorted by time)
+  const activityItems = [];
+  for (const c of commits.slice(0, 10)) {
+    const date = new Date(c.commit.author.date);
+    const msg = c.commit.message.replace('[slack] ', '').split('|')[0].trim();
+    activityItems.push({ time: date, type: 'commit', msg });
+  }
+  for (const r of skillResults) {
+    if (r.ran_at) {
+      const date = new Date(r.ran_at);
+      const f = r.findings || {};
+      const status = f.critical > 0 ? '❌' : f.warning > 0 ? '⚠️' : '✅';
+      activityItems.push({ time: date, type: 'skill', msg: `${status} ${r.display_name || r.skill}` });
+    }
+  }
+  activityItems.sort((a, b) => b.time - a.time);
+
+  if (activityItems.length) {
+    html += '<div class="section-title">Recent Activity</div><div class="timeline">';
+    for (const item of activityItems.slice(0, 8)) {
+      const time = item.time.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const color = item.type === 'skill' ? 'color:#8b8bff' : '';
+      html += `
+        <div class="timeline-item">
+          <span class="timeline-time">${time}</span>
+          <span class="timeline-msg" style="${color}">${item.msg}</span>
+        </div>`;
+    }
+    html += '</div>';
+  }
+
+  html += '</div>';
+  return html;
+}
+
+async function loadDashboard() {
+  const dashboard = document.getElementById('dashboard');
+  const status = document.getElementById('status');
+  const projects = getProjects();
+
+  if (!projects.length) {
+    dashboard.innerHTML = `
+      <div class="card">
+        <div class="card-title">No projects configured</div>
+        <div class="card-subtitle">Add a project to get started</div>
+        <button onclick="addProject()" style="margin-top:16px;padding:8px 16px;background:#222;color:#fff;border:1px solid #333;cursor:pointer;font-family:inherit;font-size:12px">+ Add Project</button>
+        <div style="margin-top:12px;font-size:11px;color:#444">
+          Tip: Set a GitHub token in localStorage for private repos:<br>
+          <code style="color:#666">localStorage.setItem('github_token', 'ghp_...')</code>
+        </div>
+      </div>`;
+    status.textContent = 'No projects. Click "Add Project" to start.';
+    return;
+  }
+
+  status.textContent = `Loading ${projects.length} project(s)...`;
+  dashboard.innerHTML = '';
+
+  for (let pi = 0; pi < projects.length; pi++) {
+    const project = projects[pi];
+    try {
+      const data = await loadProjectData(project);
+      dashboard.innerHTML += renderProject(data, pi);
+    } catch (err) {
+      dashboard.innerHTML += `
+        <div class="card">
+          <div class="card-title">${project.repo}</div>
+          <div class="card-subtitle" style="color:#ff5f56">Error loading: ${err.message}</div>
+        </div>`;
+    }
+  }
+
+  // Add project button
+  dashboard.innerHTML += `
+    <div class="card" style="display:flex;align-items:center;justify-content:center;min-height:200px;border-style:dashed;cursor:pointer" onclick="addProject()">
+      <span style="color:#333;font-size:24px">+</span>
+    </div>`;
+
+  const now = new Date().toLocaleTimeString();
+  status.textContent = `Last updated: ${now} — ${projects.length} project(s)`;
+}
+
+// Auto-refresh — 60s to stay within GitHub API rate limits
+let countdown = 60;
+setInterval(() => {
+  countdown--;
+  document.getElementById('refresh-timer').textContent = `Auto-refresh: ${countdown}s`;
+  if (countdown <= 0) { countdown = 60; loadDashboard(); }
+}, 1000);
+
+loadDashboard();
+</script>
+</body>
+</html>
